@@ -6,13 +6,18 @@ import os
 import getpass
 import os
 
+
 # Add an environment variable
 AZURE_OPENAI_API_KEY = st.secrets.get("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = st.secrets.get("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT_NAME= st.secrets.get("AZURE_OPENAI_DEPLOYMENT_NAME")
-AZURE_OPENAI_API_VERSION= st.secrets.get("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_API_VERSION= st.secrets.get("AZURE_OPENAI_API_VERSION") 
+
 
 from langchain_openai import AzureChatOpenAI
+
+
+os.environ['PINECONE_API_KEY'] = 'pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr'
 
 llm = AzureChatOpenAI(
     azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
@@ -79,6 +84,7 @@ class AgentState(TypedDict):
 
 ### Router
 
+
 from typing import Literal
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -104,9 +110,15 @@ structured_llm_router = llm.with_structured_output(RouteQuery)
 
 
 # Prompt
-system = """You are an expert at routing a user question to a vectorstore or final response.
-The vectorstore contains documents related to laptop and computer troubleshooting guide.
-Use the vectorstore for questions on these topics. Otherwise, use final-response."""
+system = """
+"You are an expert at determining whether a user's question should be answered using a vector store or a final response. The vector store contains documents related to 
+laptop and computer troubleshooting guides. Use the vector store for questions on these topics. Additionally, if the user's question appears to be a follow-up 
+(e.g., 'tell me more on this' or 'it didn't work'),retrieve relevant context from the vector store to provide a more informed response. If no relevant information is found in the vector store, use the final response."
+Instructions:
+If the question is about laptop or computer troubleshooting, retrieve relevant information from the vector store.
+If the question appears to reference an earlier conversation (e.g., a follow-up like "tell me more" or "it didn’t work"), try to retrieve context from previous interactions in the vector store before responding.
+If the question is unrelated to these topics and no relevant data exists in the vector store, provide a final response.
+"""
 route_prompt = ChatPromptTemplate.from_messages(
     [
         ("system", system),
@@ -121,6 +133,7 @@ def final_response(state):
     final_msg = ("Sorry, this question is beyond my knowledge, "
                  "as a virtual assistant I can only assist you on any troubleshooting with your laptop")
     return {"messages": [AIMessage(content=final_msg)]}
+
 
 from typing import Annotated, Literal, Sequence
 from typing_extensions import TypedDict
@@ -269,7 +282,7 @@ def rewrite(state):
         )
     ]
 
-    # Invoke the model to rephrase the question with Airtel context
+    # Invoke the model to rephrase the question
     #model = ChatOpenAI(temperature=0, model="gpt-4-0125-preview", streaming=True)
     model = llm
     response = model.invoke(msg)
@@ -420,8 +433,7 @@ hallucination_grader = hallucination_prompt | structured_llm_grader
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
-# Global variable for retry count
-global_retry_count = 0
+
 
 def grade_documents_limited(state) -> str:
     retry_count = st.session_state.retry_count +1
@@ -491,12 +503,22 @@ graph.add_node("generate", generate)
 graph.add_node("hallucination_test", hallucination_test)
 graph.add_node("final_response", final_response)
 
-graph.add_edge(START, "rewrite")
+
+graph.add_conditional_edges(
+    START,
+    route_question,
+    {
+        "final_response": "final_response",
+        "vector_store": "rewrite",
+    },
+) 
+
 graph.add_edge("rewrite", "agent")
 graph.add_conditional_edges("agent", tools_condition, {"tools": "retrieve", END: END})
 graph.add_conditional_edges("retrieve", grade_documents_limited, {"rewrite": "rewrite", "generate": "generate", "final": "final_response"})
-graph.add_edge("generate", "hallucination_test")
-graph.add_edge("hallucination_test", END)
+#graph.add_edge("generate", "hallucination_test")
+#graph.add_edge("hallucination_test", END)
+graph.add_edge("generate", END)
 graph.add_edge("rewrite", "agent")
 
 # Compile graph
@@ -538,7 +560,7 @@ def run_virtual_assistant():
 
     # Use a form to handle user input and clear the field after submission.
     with st.form(key="qa_form", clear_on_submit=True):
-        user_input = st.text_input("Ask me anything about telco offers (or type 'reset' to clear):")
+        user_input = st.text_input("Ask me about any issues with your laptop. (or type 'reset' to clear):")
         submit_button = st.form_submit_button(label="Submit")
 
     if submit_button and user_input:
