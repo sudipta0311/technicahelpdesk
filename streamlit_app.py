@@ -491,16 +491,6 @@ graph.add_node("generate", generate)
 graph.add_node("hallucination_test", hallucination_test)
 graph.add_node("final_response", final_response)
 
-'''
-graph.add_conditional_edges(
-    START,
-    route_question,
-    {
-        "final_response": "final_response",
-        "vector_store": "rewrite",
-    },
-) '''
-
 graph.add_edge(START, "rewrite")
 graph.add_edge("rewrite", "agent")
 graph.add_conditional_edges("agent", tools_condition, {"tools": "retrieve", END: END})
