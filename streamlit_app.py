@@ -16,7 +16,7 @@ AZURE_OPENAI_API_VERSION= st.secrets.get("AZURE_OPENAI_API_VERSION")
 
 from langchain_openai import AzureChatOpenAI
 
-os.environ['PINECONE_API_KEY'] = st.secrets.get("PINECONE_API_KEY") 
+PINECONE_API_KEY = st.secrets.get("PINECONE_API_KEY") 
 
 from langchain_openai import AzureChatOpenAI
 
@@ -43,7 +43,7 @@ from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
 
-pc = Pinecone(os.environ['PINECONE_API_KEY'])
+pc = Pinecone('PINECONE_API_KEY')
 
 
 # vector store
