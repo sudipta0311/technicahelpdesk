@@ -1,12 +1,10 @@
 from langchain_openai import OpenAIEmbeddings
 import streamlit as st
 
+
 import os
 
-import getpass
-import os
-
-
+# Retrieve secrets using st.secrets
 # Add an environment variable
 AZURE_OPENAI_API_KEY = st.secrets.get("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = st.secrets.get("AZURE_OPENAI_ENDPOINT")
@@ -14,31 +12,8 @@ AZURE_OPENAI_DEPLOYMENT_NAME= st.secrets.get("AZURE_OPENAI_DEPLOYMENT_NAME")
 AZURE_OPENAI_API_VERSION= st.secrets.get("AZURE_OPENAI_API_VERSION") 
 
 
-from langchain_openai import AzureChatOpenAI
+# Load existing vector store
 
-PINECONE_API_KEY = st.secrets.get("PINECONE_API_KEY") 
-
-from langchain_openai import AzureChatOpenAI
-
-llm = AzureChatOpenAI(
-    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-    azure_deployment=os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"],
-    openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
-)
-
-import getpass
-import os
-
-
-from langchain_openai import AzureOpenAIEmbeddings
-
-embeddings = AzureOpenAIEmbeddings(
-    azure_endpoint=os.environ['AZURE_OPENAI_ENDPOINT'],
-    azure_deployment='text-embedding-3-large',
-    openai_api_version='2023-05-15',
-)
-
-############################# venctor store ####################################
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
@@ -46,8 +21,10 @@ from langchain_openai import OpenAIEmbeddings
 pc = Pinecone('pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr')
 
 
-# vector store
-index_name = "helpdesk"
+embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+
+# vector store 
+index_name = "demoindex"
 
 index = pc.Index(index_name)
 
@@ -55,36 +32,15 @@ vector_store = PineconeVectorStore(index=index, embedding=embeddings)
 
 retriever = vector_store.as_retriever()
 
-
 from langchain.tools.retriever import create_retriever_tool
 
 retriever_tool = create_retriever_tool(
     retriever,
     "retrieve_blog_posts",
-    "Search and return information abput laptops.",
+    "Search and return information abput telecom products.",
 )
 
 tools = [retriever_tool]
-
-############################# Agent state ####################################
-
-
-from typing import List
-from typing import Annotated, Sequence
-from typing_extensions import TypedDict
-
-from langchain_core.messages import BaseMessage
-
-from langgraph.graph.message import add_messages
-
-
-class AgentState(TypedDict):
-    # The add_messages function defines how an update should be processed
-    # Default is to replace. add_messages says "append"
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    question: str
-    generation: str
-    documents: List[str]
 
 ############################# Router ####################################
 
@@ -142,7 +98,18 @@ def final_response(state):
 print(question_router.invoke({"question": "it was not much help?"}))
 
 
-############################################## Utility #########################################################
+############################# Utility tasks ############################################
+from typing import Annotated, Sequence
+from typing_extensions import TypedDict
+
+from langchain_core.messages import BaseMessage
+
+from langgraph.graph.message import add_messages
+
+class AgentState(TypedDict):
+    # The add_messages function defines how an update should be processed
+    # Default is to replace. add_messages says "append"
+    messages: Annotated[Sequence[BaseMessage], add_messages]
 
 from typing import Annotated, Literal, Sequence
 from typing_extensions import TypedDict
@@ -159,18 +126,13 @@ from pydantic import BaseModel, Field
 from langgraph.prebuilt import tools_condition
 
 def get_latest_user_question(messages):
-    # Iterate over the messages in reverse order.
-    for msg in reversed(messages):
-        # Check if the message is a HumanMessage.
-        # Adjust this check if you have a different way of identifying user messages.
-        if msg.__class__.__name__ == "HumanMessage":
-            return msg.content
+    # Iterate over the messages in reverse order
+    for role, content in reversed(messages):
+        if role.lower() == "user":
+            return content
     return ""
 
-
 ### Edges
-
-
 
 
 def grade_documents(state) -> Literal["generate", "rewrite"]:
@@ -193,8 +155,7 @@ def grade_documents(state) -> Literal["generate", "rewrite"]:
         binary_score: str = Field(description="Relevance score 'yes' or 'no'")
 
     # LLM
-   # model = ChatOpenAI(temperature=0, model="gpt-4-0125-preview", streaming=True)=
-    model=llm
+    model = llm
 
     # LLM with tool and validation
     llm_with_tool = model.with_structured_output(grade,method="function_calling")
@@ -209,15 +170,15 @@ def grade_documents(state) -> Literal["generate", "rewrite"]:
         input_variables=["context", "question"],
     )
 
-    # Chain
     chain = prompt | llm_with_tool
-
 
     messages = state["messages"]
     last_message = messages[-1]
 
     #question = messages[0].content
+    #question = get_latest_user_question(messages)
     question = get_latest_user_question(st.session_state.conversation)
+
     docs = last_message.content
 
     scored_result = chain.invoke({"question": question, "context": docs})
@@ -250,11 +211,11 @@ def agent(state):
     """
     print("---CALL AGENT---")
     messages = state["messages"]
-    #model = ChatOpenAI(temperature=0, streaming=True, model="gpt-4-turbo")
-    model=llm
+    model = ChatOpenAI(temperature=0, streaming=True, model="gpt-4-turbo")
     model = model.bind_tools(tools)
     response = model.invoke(messages)
     # We return a list, because this will get added to the existing list
+
     return {"messages": [response]}
 
 
@@ -272,14 +233,14 @@ def rewrite(state):
     print("---TRANSFORM QUERY FOR HP---")
 
     messages = state["messages"]
-    #question = messages[0].content  # Extract the user's question
+    #question = get_latest_user_question(messages)
     question = get_latest_user_question(st.session_state.conversation)
 
 
-    # Prompt to force contextualization for HP
+    # Prompt to force contextualization for HO
     msg = [
         HumanMessage(
-            content=f"""
+          content=f"""
         You are a virtual assistant specializing in HP laptop.
         Your job is to refine the user's question to be more specific to HP laptops troubleshooting.
 
@@ -292,116 +253,57 @@ def rewrite(state):
     ]
 
     # Invoke the model to rephrase the question with Airtel context
-    #model = ChatOpenAI(temperature=0, model="gpt-4-0125-preview", streaming=True)
-    model = llm
+    model = ChatOpenAI(temperature=0, model="gpt-4-0125-preview", streaming=True)
     response = model.invoke(msg)
-
-    #print("All messages:")
-    #print("All messages:", messages)
     print("relevent conextualized question=" + response.content)
 
-    #print(response.content)
+    print(response.content)
     return {"messages": [response]}
 
 
 def generate(state):
-    """
-    Generate answer
-
-    Args:
-        state (messages): The current state
-
-    Returns:
-         dict: The updated state with re-phrased question
-    """
     print("---GENERATE---")
     messages = state["messages"]
-    #question = messages[0].content
-    question = get_latest_user_question(st.session_state.conversation)
-    last_message = messages[-1]
 
+    #question = get_latest_user_question(messages)
+    question = get_latest_user_question(st.session_state.conversation)
+    # Assume the last assistant message (or retrieved content) holds the context.
+    last_message = messages[-1]
     docs = last_message.content
 
-    # Prompt
-   # prompt = hub.pull("rlm/rag-prompt")
     prompt = PromptTemplate(
-    template="""
-    You are a helpdesk agent specializing in troubleshooting computer issues. Your goal is to assist customers by diagnosing problems, providing step-by-step solutions, and ensuring their systems are functioning properly."
+        template="""
+        You are a helpdesk agent specializing in troubleshooting computer issues. Your goal is to assist customers by diagnosing problems, providing step-by-step solutions, and ensuring their systems are functioning properly."
 
-    Context Information:
-    {context}
+        Context Information:
+        {context}
 
-    Customer's Issue:
-    {question}
+        Customer's Issue:
+        {question}
 
-    Instructions:
-    If the context contains relevant details, use them to provide accurate troubleshooting steps.
-    Ask clarifying questions if needed to better understand the customer's issue.
-    Provide clear, concise, and actionable solutions in a step-by-step format.
-    If multiple solutions exist, suggest the most effective one first.
-    If no relevant information is available, politely inform the customer:
-    "I'm sorry, but I don't have enough details to resolve this issue. Could you provide more information?"
-    Troubleshooting Response Format:
-    Greeting & Acknowledgment: ("I'm here to help! Let's troubleshoot your issue.")
-    Problem Diagnosis: ("Based on your description, this issue may be caused by...")
-    Step-by-Step Solution: ("Try the following steps...")
-    Next Steps: ("If the issue persists, you may need to...")
-    Closing & Reassurance: ("Let me know if this resolves your issue! I'm happy to assist further.")
-    """,
-    input_variables=["context", "question"],)
+        Instructions:
+        If the context contains relevant details, use them to provide accurate troubleshooting steps.
+        Ask clarifying questions if needed to better understand the customer's issue.
+        Provide clear, concise, and actionable solutions in a step-by-step format.
+        If multiple solutions exist, suggest the most effective one first.
+        If no relevant information is available, politely inform the customer:
+        "I'm sorry, but I don't have enough details to resolve this issue. Could you provide more information?"
+        Troubleshooting Response Format:
+        Greeting & Acknowledgment: ("I'm here to help! Let's troubleshoot your issue.")
+        Problem Diagnosis: ("Based on your description, this issue may be caused by...")
+        Step-by-Step Solution: ("Try the following steps...")
+        Next Steps: ("If the issue persists, you may need to...")
+        Closing & Reassurance: ("Let me know if this resolves your issue! I'm happy to assist further.")
+        """,
+        input_variables=["context", "question"],
+    )
 
-
-    # LLM
     #llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, streaming=True)
-
-    # Post-processing
-    def format_docs(docs):
-        return "\n\n".join(doc.page_content for doc in docs)
-
-    # Chain
     rag_chain = prompt | llm | StrOutputParser()
-
-    # Run
     response = rag_chain.invoke({"context": docs, "question": question})
     return {"messages": [response]}
 
-
-#print("*" * 20 + "Prompt[rlm/rag-prompt]" + "*" * 20)
-#prompt = hub.pull("rlm/rag-prompt").pretty_print()  # Show what the prompt looks like
-
-############################################# HALUCINATION GRADER###############################
-
-### Hallucination Grader
-from langchain_core.prompts import ChatPromptTemplate
-
-# Data model
-class GradeHallucinations(BaseModel):
-    """Binary score for hallucination present in generation answer."""
-
-    binary_score: str = Field(
-        description="Answer is grounded in the facts, 'yes' or 'no'"
-    )
-
-
-# LLM with function call
-structured_llm_grader = llm.with_structured_output(GradeHallucinations)
-
-# Prompt
-system = """You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts. \n
-     Give a binary score 'yes' or 'no'. 'Yes' means that the answer is grounded in / supported by the set of facts."""
-hallucination_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", system),
-        ("human", "Set of facts: \n\n {documents} \n\n LLM generation: {generation}"),
-    ]
-)
-
-hallucination_grader = hallucination_prompt | structured_llm_grader
-
-
-################################################### GRAPH####################################################################
-
-
+################################# GRAPH##################################
 from langgraph.graph import END, StateGraph, START
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
@@ -409,7 +311,7 @@ from typing import Annotated, Sequence
 from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage, AIMessage
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+import streamlit as st
 
 # Initialize session state for conversation history if it doesn't exist.
 if "conversation" not in st.session_state:
@@ -418,106 +320,54 @@ if "conversation" not in st.session_state:
 if "retry_count" not in st.session_state:
     st.session_state.retry_count = 0
 
-# Data model for hallucination grading
-class GradeHallucinations(BaseModel):
-    """Binary score for hallucination present in generation answer."""
-
-    binary_score: str = Field(
-        description="Answer is grounded in the facts, 'yes' or 'no'"
-    )
-
-# LLM with function call
-#llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-structured_llm_grader = llm.with_structured_output(GradeHallucinations)
-
-# Prompt for hallucination grading
-system = """You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts. \n
-     Give a binary score 'yes' or 'no'. 'Yes' means that the answer is grounded in / supported by the set of facts."""
-hallucination_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", system),
-        ("human", "Set of facts: \n\n {documents} \n\n LLM generation: {generation}"),
-    ]
-)
-
-hallucination_grader = hallucination_prompt | structured_llm_grader
-
-# Define AgentState
+# Define AgentState (we don't include retry_count in AgentState because we'll use session state)
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
-
-
+# New wrapper to limit retries using session state.
 def grade_documents_limited(state) -> str:
-    retry_count = st.session_state.retry_count +1
-    print("---TEST global retry count is ---", retry_count)
+    # Use the retry count from session state
 
-    decision = grade_documents(state)  # Assume this function is defined elsewhere.
+
+
+    decision = grade_documents(state)  # This function must be defined elsewhere.
+    retry_count = st.session_state.retry_count +1
+    print("---TEST retry count is ---", retry_count)
 
     if decision == "rewrite":
         if retry_count >= 1:
+            # Maximum retries reached: return a special decision "final"
             print("---Maximum retries reached: switching to final response---")
             return "final"
         else:
+            # Increment the retry counter in session state.
             st.session_state.retry_count = retry_count + 1
-            print("---after increment, global retry count is ---", retry_count)
+            print("---after increment, retry count is ---", st.session_state.retry_count)
             return "rewrite"
     else:
         return decision
-
-def route_question(state):
-    """
-    Route question to web search or RAG.
-
-    Args:
-        state (dict): The current graph state
-
-    Returns:
-        str: Next node to call
-    """
-
-    print("---ROUTE QUESTION---")
-    messages = state["messages"]
-    #question = messages[0].content
-    question = get_latest_user_question(messages)
-    source = question_router.invoke({"question": question})
-    if source.datasource == "final_response":
-        print("---ROUTE QUESTION TO WEB SEARCH---")
-        return "final_response"
-    elif source.datasource == "vector_store":
-        print("---ROUTE QUESTION TO RAG---")
-        return "vector_store"
-
-
-def hallucination_test(state):
-    """Runs hallucination grading before ending the graph."""
-    latest_response = state["messages"][-1].content if state["messages"] else ""
-
-    # Ensure that docs is properly retrieved from the state or last response
-    docs = state["messages"][-2].content if len(state["messages"]) > 1 else ""  # Use the second-to-last message as docs if available
-
-    hallucination_result = hallucination_grader.invoke({"documents": docs, "generation": latest_response})
-
-    result_msg = f"Hallucination test result: {hallucination_result.binary_score}"
-    print(result_msg)
-    return {"messages": [AIMessage(content=latest_response)],"result": hallucination_result.binary_score }
-
+    
+    # New node to handle the final response.
 def final_response(state):
-    final_msg = ("Sorry, this question is beyond my knowledge, "
+    final_msg = ("Sorry, this question is beyond my knowledge "
                  "as a virtual assistant I can only assist you on any troubleshooting with your laptop")
     return {"messages": [AIMessage(content=final_msg)]}
 
-# Define workflow
-graph = StateGraph(AgentState)
-graph.add_node("agent", agent)
-graph.add_node("retrieve", ToolNode([retriever_tool]))
-graph.add_node("rewrite", rewrite)
-graph.add_node("generate", generate)
-#graph.add_node("hallucination_test", hallucination_test)
-graph.add_node("final_response", final_response)
+# Define a new graph.
+workflow = StateGraph(AgentState)
 
+# Define the nodes (agent, retrieve, rewrite, generate, and final_response).
+workflow.add_node("agent", agent)         # Agent node; function 'agent' must be defined.
+retrieve = ToolNode([retriever_tool])       # 'retriever_tool' must be defined.
+workflow.add_node("retrieve", retrieve)     # Retrieval node.
+workflow.add_node("rewrite", rewrite)       # Rewriting the question; function 'rewrite' must be defined.
+workflow.add_node("generate", generate)     # Generating the response; function 'generate' must be defined.
+workflow.add_node("final_response", final_response)  # Final response node.
 
-graph.add_conditional_edges(
+# Build the edges.
+#workflow.add_edge(START, "rewrite")
+
+workflow.add_conditional_edges(
     START,
     route_question,
     {
@@ -526,23 +376,33 @@ graph.add_conditional_edges(
     },
 )
 
-graph.add_edge("rewrite", "agent")
-graph.add_conditional_edges("agent", tools_condition, {"tools": "retrieve", END: END})
-graph.add_conditional_edges("retrieve", grade_documents_limited, {"rewrite": "rewrite", "generate": "generate", "final": "final_response"})
-#graph.add_edge("generate", "hallucination_test")
-#graph.add_edge("hallucination_test", END)
-graph.add_edge("generate", END)
-graph.add_edge("rewrite", "agent")
+workflow.add_edge("rewrite", "agent")
+workflow.add_conditional_edges(
+    "agent",
+    tools_condition,  # Function 'tools_condition' must be defined.
+    {
+        "tools": "retrieve",
+        END: END,
+    },
+)
+# In the retrieval branch, use the limited grade_documents function.
+workflow.add_conditional_edges(
+    "retrieve",
+    grade_documents_limited,
+    {
+        "rewrite": "rewrite",
+        "generate": "generate",
+        "final": "final_response"
+    }
+)
+workflow.add_edge("generate", END)
+workflow.add_edge("rewrite", "agent")
 
-# Compile graph
+# Compile the graph.
 memory = MemorySaver()
-graph = graph.compile(checkpointer=memory)
-##
+graph = workflow.compile(checkpointer=memory)
 
-
-####################################################### GUI################################################################################
-
-
+#############################################GUI#################################################
 import uuid
 import streamlit as st
 
@@ -575,7 +435,7 @@ def run_virtual_assistant():
 
     # Use a form to handle user input and clear the field after submission.
     with st.form(key="qa_form", clear_on_submit=True):
-        user_input = st.text_input("Ask me about any issues with your laptop. (or type 'reset' to clear):")
+        user_input = st.text_input("Ask me anything about your laptop problem (or type 'reset' to clear):")
         submit_button = st.form_submit_button(label="Submit")
 
     if submit_button and user_input:
