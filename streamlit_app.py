@@ -39,14 +39,12 @@ from langchain_openai import OpenAIEmbeddings
 pc = Pinecone('pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr')
 
 
-# vector store
-index_name = "helpdesk"
+ vector store 
+index_name = "demoindex"
 
 index = pc.Index(index_name)
 
 vector_store = PineconeVectorStore(index=index, embedding=embeddings)
-
-
 
 retriever = vector_store.as_retriever()
 
@@ -364,6 +362,29 @@ def grade_documents_limited(state) -> str:
             return "rewrite"
     else:
         return decision
+def route_question(state):
+    """
+    Route question to web search or RAG.
+
+    Args:
+        state (dict): The current graph state
+
+    Returns:
+        str: Next node to call
+    """
+
+    print("---ROUTE QUESTION---")
+    messages = state["messages"]
+    #question = messages[0].content
+    question = get_latest_user_question(messages)
+    source = question_router.invoke({"question": question})
+    if source.datasource == "final_response":
+        print("---ROUTE QUESTION TO WEB SEARCH---")
+        return "final_response"
+    elif source.datasource == "vector_store":
+        print("---ROUTE QUESTION TO RAG---")
+        return "vector_store"
+    
     
     # New node to handle the final response.
 def final_response(state):
