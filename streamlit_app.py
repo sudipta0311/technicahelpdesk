@@ -11,14 +11,16 @@ AZURE_OPENAI_ENDPOINT = st.secrets.get("AZURE_OPENAI_ENDPOINT")
 AZURE_OPENAI_DEPLOYMENT_NAME= st.secrets.get("AZURE_OPENAI_DEPLOYMENT_NAME")
 AZURE_OPENAI_API_VERSION= st.secrets.get("AZURE_OPENAI_API_VERSION") 
 
+from langchain_openai import AzureChatOpenAI
 
-# Load existing vector store
+llm = AzureChatOpenAI(
+    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+    azure_deployment=os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"],
+    openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+)
 
-from langchain_pinecone import PineconeVectorStore
-from pinecone import Pinecone
-from langchain_openai import OpenAIEmbeddings
-
-pc = Pinecone('pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr')
+import getpass
+import os
 
 
 from langchain_openai import AzureOpenAIEmbeddings
@@ -28,8 +30,16 @@ embeddings = AzureOpenAIEmbeddings(
     azure_deployment='text-embedding-3-large',
     openai_api_version='2023-05-15',
 )
+# Load existing vector store
 
-# vector store 
+from langchain_pinecone import PineconeVectorStore
+from pinecone import Pinecone
+from langchain_openai import OpenAIEmbeddings
+
+pc = Pinecone('pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr')
+
+
+ vector store 
 index_name = "demoindex"
 
 index = pc.Index(index_name)
