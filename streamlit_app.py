@@ -230,7 +230,7 @@ def agent(state):
     """
     print("---CALL AGENT---")
     messages = state["messages"]
-    model = ChatOpenAI(temperature=0, streaming=True, model="gpt-4-turbo")
+    model = llm
     model = model.bind_tools(tools)
     response = model.invoke(messages)
     # We return a list, because this will get added to the existing list
@@ -272,7 +272,7 @@ def rewrite(state):
     ]
 
     # Invoke the model to rephrase the question with Airtel context
-    model = ChatOpenAI(temperature=0, model="gpt-4-0125-preview", streaming=True)
+    model = llm
     response = model.invoke(msg)
     print("relevent conextualized question=" + response.content)
 
