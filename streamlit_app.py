@@ -39,8 +39,8 @@ from langchain_openai import OpenAIEmbeddings
 pc = Pinecone('pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr')
 
 
- vector store 
-index_name = "demoindex"
+# vector store
+index_name = "helpdesk"
 
 index = pc.Index(index_name)
 
@@ -385,7 +385,7 @@ def route_question(state):
         print("---ROUTE QUESTION TO RAG---")
         return "vector_store"
     
-    
+
     # New node to handle the final response.
 def final_response(state):
     final_msg = ("Sorry, this question is beyond my knowledge "
