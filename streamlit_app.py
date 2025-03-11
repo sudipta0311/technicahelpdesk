@@ -18,6 +18,8 @@ from langchain_openai import AzureChatOpenAI
 
 os.environ['PINECONE_API_KEY'] = st.secrets.get("PINECONE_API_KEY") 
 
+from langchain_openai import AzureChatOpenAI
+
 llm = AzureChatOpenAI(
     azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
     azure_deployment=os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"],
@@ -36,7 +38,7 @@ embeddings = AzureOpenAIEmbeddings(
     openai_api_version='2023-05-15',
 )
 
-
+############################# venctor store ####################################
 from langchain_pinecone import PineconeVectorStore
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
@@ -64,6 +66,9 @@ retriever_tool = create_retriever_tool(
 
 tools = [retriever_tool]
 
+############################# Agent state ####################################
+
+
 from typing import List
 from typing import Annotated, Sequence
 from typing_extensions import TypedDict
@@ -81,8 +86,9 @@ class AgentState(TypedDict):
     generation: str
     documents: List[str]
 
-### Router
+############################# Router ####################################
 
+### Router
 
 from typing import Literal
 
@@ -110,8 +116,8 @@ structured_llm_router = llm.with_structured_output(RouteQuery)
 
 # Prompt
 system = """
-"You are an expert at determining whether a user's question should be answered using a vector store or a final response. The vector store contains documents related to 
-laptop and computer troubleshooting guides. Use the vector store for questions on these topics. Additionally, if the user's question appears to be a follow-up 
+"You are an expert at determining whether a user's question should be answered using a vector store or a final response. The vector store contains documents related to
+laptop and computer troubleshooting guides. Use the vector store for questions on these topics. Additionally, if the user's question appears to be a follow-up
 (e.g., 'tell me more on this' or 'it didn't work'),retrieve relevant context from the vector store to provide a more informed response. If no relevant information is found in the vector store, use the final response."
 Instructions:
 If the question is about laptop or computer troubleshooting, retrieve relevant information from the vector store.
@@ -122,7 +128,7 @@ route_prompt = ChatPromptTemplate.from_messages(
     [
         ("system", system),
         ("human", "{question}"),
-    ]
+    ] 
 )
 
 question_router = route_prompt | structured_llm_router
@@ -133,6 +139,10 @@ def final_response(state):
                  "as a virtual assistant I can only assist you on any troubleshooting with your laptop")
     return {"messages": [AIMessage(content=final_msg)]}
 
+print(question_router.invoke({"question": "it was not much help?"}))
+
+
+############################################## Utility #########################################################
 
 from typing import Annotated, Literal, Sequence
 from typing_extensions import TypedDict
@@ -281,7 +291,7 @@ def rewrite(state):
         )
     ]
 
-    # Invoke the model to rephrase the question
+    # Invoke the model to rephrase the question with Airtel context
     #model = ChatOpenAI(temperature=0, model="gpt-4-0125-preview", streaming=True)
     model = llm
     response = model.invoke(msg)
@@ -359,6 +369,8 @@ def generate(state):
 #print("*" * 20 + "Prompt[rlm/rag-prompt]" + "*" * 20)
 #prompt = hub.pull("rlm/rag-prompt").pretty_print()  # Show what the prompt looks like
 
+############################################# HALUCINATION GRADER###############################
+
 ### Hallucination Grader
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -386,7 +398,9 @@ hallucination_prompt = ChatPromptTemplate.from_messages(
 
 hallucination_grader = hallucination_prompt | structured_llm_grader
 
-################################# GRAPH################################################
+
+################################################### GRAPH####################################################################
+
 
 from langgraph.graph import END, StateGraph, START
 from langgraph.prebuilt import ToolNode
@@ -407,7 +421,7 @@ if "retry_count" not in st.session_state:
 # Data model for hallucination grading
 class GradeHallucinations(BaseModel):
     """Binary score for hallucination present in generation answer."""
-    
+
     binary_score: str = Field(
         description="Answer is grounded in the facts, 'yes' or 'no'"
     )
@@ -417,7 +431,7 @@ class GradeHallucinations(BaseModel):
 structured_llm_grader = llm.with_structured_output(GradeHallucinations)
 
 # Prompt for hallucination grading
-system = """You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts. \n 
+system = """You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts. \n
      Give a binary score 'yes' or 'no'. 'Yes' means that the answer is grounded in / supported by the set of facts."""
 hallucination_prompt = ChatPromptTemplate.from_messages(
     [
@@ -437,16 +451,16 @@ class AgentState(TypedDict):
 def grade_documents_limited(state) -> str:
     retry_count = st.session_state.retry_count +1
     print("---TEST global retry count is ---", retry_count)
-    
+
     decision = grade_documents(state)  # Assume this function is defined elsewhere.
-    
+
     if decision == "rewrite":
         if retry_count >= 1:
             print("---Maximum retries reached: switching to final response---")
             return "final"
         else:
             st.session_state.retry_count = retry_count + 1
-            print("---after increment, global retry count is ---", global_retry_count)
+            print("---after increment, global retry count is ---", retry_count)
             return "rewrite"
     else:
         return decision
@@ -478,12 +492,12 @@ def route_question(state):
 def hallucination_test(state):
     """Runs hallucination grading before ending the graph."""
     latest_response = state["messages"][-1].content if state["messages"] else ""
-    
+
     # Ensure that docs is properly retrieved from the state or last response
     docs = state["messages"][-2].content if len(state["messages"]) > 1 else ""  # Use the second-to-last message as docs if available
-    
+
     hallucination_result = hallucination_grader.invoke({"documents": docs, "generation": latest_response})
-    
+
     result_msg = f"Hallucination test result: {hallucination_result.binary_score}"
     print(result_msg)
     return {"messages": [AIMessage(content=latest_response)],"result": hallucination_result.binary_score }
@@ -499,7 +513,7 @@ graph.add_node("agent", agent)
 graph.add_node("retrieve", ToolNode([retriever_tool]))
 graph.add_node("rewrite", rewrite)
 graph.add_node("generate", generate)
-graph.add_node("hallucination_test", hallucination_test)
+#graph.add_node("hallucination_test", hallucination_test)
 graph.add_node("final_response", final_response)
 
 
@@ -510,7 +524,7 @@ graph.add_conditional_edges(
         "final_response": "final_response",
         "vector_store": "rewrite",
     },
-) 
+)
 
 graph.add_edge("rewrite", "agent")
 graph.add_conditional_edges("agent", tools_condition, {"tools": "retrieve", END: END})
@@ -525,7 +539,9 @@ memory = MemorySaver()
 graph = graph.compile(checkpointer=memory)
 ##
 
-#############################################GUI#################################################
+
+####################################################### GUI################################################################################
+
 
 import uuid
 import streamlit as st
@@ -600,5 +616,3 @@ def run_virtual_assistant():
 
 if __name__ == "__main__":
     run_virtual_assistant()
-
-
