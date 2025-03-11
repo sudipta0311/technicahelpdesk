@@ -21,7 +21,13 @@ from langchain_openai import OpenAIEmbeddings
 pc = Pinecone('pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr')
 
 
-embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+from langchain_openai import AzureOpenAIEmbeddings
+
+embeddings = AzureOpenAIEmbeddings(
+    azure_endpoint=os.environ['AZURE_OPENAI_ENDPOINT'],
+    azure_deployment='text-embedding-3-large',
+    openai_api_version='2023-05-15',
+)
 
 # vector store 
 index_name = "demoindex"
