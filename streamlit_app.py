@@ -143,10 +143,13 @@ from langgraph.prebuilt import tools_condition
 
 def get_latest_user_question(messages):
     # Iterate over the messages in reverse order
-    for role, content in reversed(messages):
-        if role.lower() == "user":
-            return content
+    for msg in reversed(messages):
+        # Check if the message is a HumanMessage.
+        # Adjust this check if you have a different way of identifying user messages.
+        if msg.__class__.__name__ == "HumanMessage":
+            return msg.content
     return ""
+
 
 ### Edges
 
