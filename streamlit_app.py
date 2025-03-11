@@ -39,12 +39,14 @@ from langchain_openai import OpenAIEmbeddings
 pc = Pinecone('pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr')
 
 
- vector store 
-index_name = "demoindex"
+# vector store
+index_name = "helpdesk"
 
 index = pc.Index(index_name)
 
 vector_store = PineconeVectorStore(index=index, embedding=embeddings)
+
+
 
 retriever = vector_store.as_retriever()
 
