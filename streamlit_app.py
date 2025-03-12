@@ -533,7 +533,7 @@ if "conversation" not in st.session_state:
     st.session_state.conversation = []  # List of tuples like ("user", "question") or ("assistant", "response")
 
 def run_virtual_assistant():
-    st.title("Virtual Agent")
+    st.title("Virtual Agent for technical support for Laptop")
 
     # Display conversation history if available.
     if st.session_state.conversation:
