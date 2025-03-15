@@ -131,7 +131,7 @@ question_router = route_prompt | structured_llm_router
 
 def final_response(state):
     final_msg = ("Sorry, this question is beyond my knowledge, "
-                 "as a virtual assistant I can only assist you on any troubleshooting with your laptop")
+                 "as a virtual assistant I can only assist you on laptop hardware or OS related issues")
     return {"messages": [AIMessage(content=final_msg)]}
 
 print(question_router.invoke({"question": "it was not much help?"}))
