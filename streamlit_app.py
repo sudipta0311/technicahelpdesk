@@ -5,19 +5,18 @@ import streamlit as st
 
 # Retrieve secrets using st.secrets
 # Add an environment variable
-os.environ['AZURE_OPENAI_API_KEY'] = 'gVRCQ3ysiYaF3OZAPwCCV3xarPxrMTnnR80foZZ1RN4GxuuzArw3JQQJ99ALACYeBjFXJ3w3AAABACOGAhlP'
-os.environ['AZURE_OPENAI_ENDPOINT'] = 'https://demoai4967.openai.azure.com/'
-os.environ['AZURE_OPENAI_DEPLOYMENT_NAME'] = 'gpt-4o'
-os.environ['AZURE_OPENAI_API_VERSION'] = '2024-08-01-preview'
+AZURE_OPENAI_API_KEY = st.secrets.get("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_ENDPOINT = st.secrets.get("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_DEPLOYMENT_NAME= st.secrets.get("AZURE_OPENAI_DEPLOYMENT_NAME")
+AZURE_OPENAI_API_VERSION= st.secrets.get("AZURE_OPENAI_API_VERSION") 
 
-os.environ['PINECONE_API_KEY'] = 'pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr'
 
 from langchain_openai import AzureChatOpenAI
 
 llm = AzureChatOpenAI(
-    azure_endpoint=os.environ['AZURE_OPENAI_ENDPOINT'],
-    azure_deployment=os.environ['AZURE_OPENAI_DEPLOYMENT_NAME'],
-    openai_api_version=os.environ['AZURE_OPENAI_API_VERSION'],
+    azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME,
+    openai_api_version=AZURE_OPENAI_API_VERSION,
 )
 
 import getpass
