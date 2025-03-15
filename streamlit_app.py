@@ -5,17 +5,19 @@ import streamlit as st
 
 # Retrieve secrets using st.secrets
 # Add an environment variable
-AZURE_OPENAI_API_KEY = st.secrets.get("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = st.secrets.get("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME= st.secrets.get("AZURE_OPENAI_DEPLOYMENT_NAME")
-AZURE_OPENAI_API_VERSION= st.secrets.get("AZURE_OPENAI_API_VERSION") 
+os.environ['AZURE_OPENAI_API_KEY'] = 'gVRCQ3ysiYaF3OZAPwCCV3xarPxrMTnnR80foZZ1RN4GxuuzArw3JQQJ99ALACYeBjFXJ3w3AAABACOGAhlP'
+os.environ['AZURE_OPENAI_ENDPOINT'] = 'https://demoai4967.openai.azure.com/'
+os.environ['AZURE_OPENAI_DEPLOYMENT_NAME'] = 'gpt-4o'
+os.environ['AZURE_OPENAI_API_VERSION'] = '2024-08-01-preview'
+
+os.environ['PINECONE_API_KEY'] = 'pcsk_2yWxfV_RzZcenPUjLkzMK78P8D2MEX6yfzSZJ2GYCKCfkiHUpgbj8ekG4yWfue7JJsEYtr'
 
 from langchain_openai import AzureChatOpenAI
 
 llm = AzureChatOpenAI(
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME,
-    openai_api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=os.environ['AZURE_OPENAI_ENDPOINT'],
+    azure_deployment=os.environ['AZURE_OPENAI_DEPLOYMENT_NAME'],
+    openai_api_version=os.environ['AZURE_OPENAI_API_VERSION'],
 )
 
 import getpass
@@ -54,8 +56,8 @@ from langchain.tools.retriever import create_retriever_tool
 
 retriever_tool = create_retriever_tool(
     retriever,
-    "retrieve_blog_posts",
-    "Search and return information abput laptops.",
+    "retrieve_troubleshooting_guide",
+    "Search and return information regarding the troubleshooting information for common laptop problem.",
 )
 
 tools = [retriever_tool]
@@ -98,7 +100,7 @@ class RouteQuery(BaseModel):
 
     datasource: Literal["vector_store", "final_response"] = Field(
         ...,
-        description="Given a user question choose to route it to web search or a vectorstore.",
+        description="Given a user question choose to route it to final answer or a vectorstore.",
     )
 
 
@@ -215,9 +217,7 @@ def grade_documents(state) -> Literal["generate", "rewrite"]:
     messages = state["messages"]
     last_message = messages[-1]
 
-    #question = messages[0].content
-    #question = get_latest_user_question(messages)
-    question = get_latest_user_question(st.session_state.conversation)
+    question = get_latest_assistant_message(st.session_state.conversation)
 
     docs = last_message.content
 
@@ -250,9 +250,22 @@ def agent(state):
         dict: The updated state with the agent response appended to messages
     """
     print("---CALL AGENT---")
-    messages = state["messages"]
-    #model = ChatOpenAI(temperature=0, streaming=True, model="gpt-4-turbo")
 
+    messages = state["messages"]
+
+   # print("Messages before summary:", messages)
+
+    
+    # Summarizing long messages before sending them to the model
+    def summarize_message(msg):
+        if isinstance(msg, AIMessage) and len(msg.content) > 1000:
+            return AIMessage(content=msg.content[:997] + "...")
+        return msg
+
+    messages = [summarize_message(msg) for msg in messages]
+
+    print("Messages after summarization:", messages)
+   
     model=llm
     model = model.bind_tools(tools)
     response = model.invoke(messages)
@@ -260,6 +273,27 @@ def agent(state):
 
     return {"messages": [response]}
 
+##############DEBUG #######################################
+
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+def get_all_assistant_messages(messages):
+    # Collect all assistant messages
+    assistant_messages = [content for role, content in reversed(messages) if role.lower() == "ai"]
+    
+    # Return the list of all assistant messages
+    return assistant_messages
+
+
+
+def get_latest_assistant_message(messages):
+    # Iterate over the messages in reverse order to find the latest assistant message
+    for role, content in reversed(messages):
+        if role.lower() == "ai":
+            return content
+    return ""
+
+############################################################
 
 def rewrite(state):
     """
@@ -294,13 +328,15 @@ def rewrite(state):
         )
     ]
 
-    # Invoke the model to rephrase the question with Airtel context
+    # Invoke the model to rephrase the question with relevent context
     #model = ChatOpenAI(temperature=0, model="gpt-4-0125-preview", streaming=True)
     model = llm
     response = model.invoke(msg)
     print("relevent conextualized question=" + response.content)
 
-    print(response.content)
+    st.session_state.conversation.append(("ai", response.content))
+
+    #print(response.content)
     return {"messages": [response]}
 
 
@@ -315,30 +351,44 @@ def generate(state):
     docs = last_message.content
 
     prompt = PromptTemplate(
-        template="""
-        You are a helpdesk agent specializing in troubleshooting computer issues. Your goal is to assist customers by diagnosing problems, providing step-by-step solutions, and ensuring their systems are functioning properly."
+        template = """  
+            You are a **helpful, patient, and knowledgeable** helpdesk agent assisting users with troubleshooting laptop issues.  
+            Your goal is to **engage naturally, diagnose problems interactively, and guide users step-by-step.**  
 
-        Context Information:
-        {context}
+            ---  
+            **User’s Issue:**  
+            {question}  
 
-        Customer's Issue:
-        {question}
+            **Relevant Context (if available):**  
+            {context}  
+            ---  
 
-        Instructions:
-        If the context contains relevant details, use them to provide accurate troubleshooting steps.
-        Ask clarifying questions if needed to better understand the customer's issue.
-        Provide clear, concise, and actionable solutions in a step-by-step format.
-        If multiple solutions exist, suggest the most effective one first.
-        If no relevant information is available, politely inform the customer:
-        "I'm sorry, but I don't have enough details to resolve this issue. Could you provide more information?"
-        Troubleshooting Response Format:
-        Greeting & Acknowledgment: ("I'm here to help! Let's troubleshoot your issue.")
-        Problem Diagnosis: ("Based on your description, this issue may be caused by...")
-        Step-by-Step Solution: ("Try the following steps...")
-        Next Steps: ("If the issue persists, you may need to...")
-        Closing & Reassurance: ("Let me know if this resolves your issue! I'm happy to assist further.")
+            ### **How to Respond:**  
+            - Speak **naturally and conversationally**—don’t sound like a script.  
+            - Adapt to the user's level of tech knowledge. If they seem less technical, explain simply.  
+            - If you need more info, **ask follow-up questions naturally** instead of saying, *"Need more details."*  
+            - Don’t just list solutions—**walk the user through them like a real conversation.**  
+            - Change response structure **dynamically** based on previous answers.  
+
+            ### **Example Interaction Style:**  
+            - If the user seems frustrated, acknowledge it:  
+            *"That sounds frustrating! Let's get it fixed quickly."*  
+            - If they’re unsure, reassure them:  
+            *"No worries, I’ll guide you step by step."*  
+            - If it’s a common issue, be proactive:  
+            *"Ah, I’ve seen this before! Try this first..."*  
+            - If troubleshooting requires multiple steps, ask for feedback after each one.  
+            *"Did that help, or is the issue still there?"*  
+
+            ### **Response Format (Flexible, Not Fixed):**  
+            - Start with a conversational opener, adjusting tone based on the issue.  
+            - **Possible Cause:** Briefly explain what might be wrong (if clear).  
+            - **Step-by-Step Fix:** Guide them interactively, asking for feedback.  
+            - **Next Steps:** If the issue isn’t resolved, suggest what to try next or escalate.  
+
+            ⚡ **Be engaging, patient, and dynamic. No robotic responses.**  
         """,
-        input_variables=["context", "question"],
+        input_variables=["context", "question"]
     )
 
    # llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0, streaming=True)
@@ -386,6 +436,16 @@ from langchain_core.messages import BaseMessage, AIMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
+import streamlit as st
+
+# Initialize session state for conversation history if it doesn't exist.
+if "conversation" not in st.session_state:
+    st.session_state.conversation = []  # List of tuples like ("user", "question") or ("assistant", "response")
+    # Initialize session state for retry count.
+if "retry_count" not in st.session_state:
+    st.session_state.retry_count = 0
+
+
 # Data model for hallucination grading
 class GradeHallucinations(BaseModel):
     """Binary score for hallucination present in generation answer."""
@@ -418,17 +478,15 @@ class AgentState(TypedDict):
 global_retry_count = 0
 
 def grade_documents_limited(state) -> str:
-    global global_retry_count
-    print("---TEST global retry count is ---", global_retry_count)
 
     decision = grade_documents(state)  # Assume this function is defined elsewhere.
-
+    retry_count = st.session_state.retry_count +1
     if decision == "rewrite":
-        if global_retry_count >= 1:
+        if retry_count >= 1:
             print("---Maximum retries reached: switching to final response---")
             return "final"
         else:
-            global_retry_count += 1
+            st.session_state.retry_count = retry_count + 1
             print("---after increment, global retry count is ---", global_retry_count)
             return "rewrite"
     else:
@@ -485,6 +543,7 @@ graph.add_node("rewrite", rewrite)
 graph.add_node("generate", generate)
 #graph.add_node("hallucination_test", hallucination_test)
 graph.add_node("final_response", final_response)
+
 
 
 graph.add_conditional_edges(
