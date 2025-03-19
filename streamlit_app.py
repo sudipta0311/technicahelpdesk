@@ -516,7 +516,7 @@ graph.add_node("agent", agent)
 graph.add_node("retrieve", ToolNode([retriever_tool]))
 graph.add_node("rewrite", rewrite)
 graph.add_node("generate", generate)
-graph.add_node("hallucination_test", hallucination_test)
+#graph.add_node("hallucination_test", hallucination_test)
 graph.add_node("final_response", final_response)
 
 
@@ -533,10 +533,10 @@ graph.add_conditional_edges(
 graph.add_edge("rewrite", "agent")
 graph.add_conditional_edges("agent", tools_condition, {"tools": "retrieve", END: END})
 graph.add_conditional_edges("retrieve", grade_documents_limited, {"rewrite": "rewrite", "generate": "generate", "final": "final_response"})
-graph.add_edge("generate", "hallucination_test")
-graph.add_conditional_edges("hallucination_test", lambda state: "generate" if state["result"] == "no" else END, {"generate": "generate", END: END})
-graph.add_edge("hallucination_test", END)
-#graph.add_edge("generate", END)
+#graph.add_edge("generate", "hallucination_test")
+#graph.add_conditional_edges("hallucination_test", lambda state: "generate" if state["result"] == "no" else END, {"generate": "generate", END: END})
+#graph.add_edge("hallucination_test", END)
+graph.add_edge("generate", END)
 graph.add_edge("rewrite", "agent")
 
 # Compile graph
