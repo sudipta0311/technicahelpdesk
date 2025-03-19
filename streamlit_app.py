@@ -445,30 +445,6 @@ if "retry_count" not in st.session_state:
     st.session_state.retry_count = 0
 
 
-# Data model for hallucination grading
-class GradeHallucinations(BaseModel):
-    """Binary score for hallucination present in generation answer."""
-
-    binary_score: str = Field(
-        description="Answer is grounded in the facts, 'yes' or 'no'"
-    )
-
-# LLM with function call
-#llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-structured_llm_grader = llm.with_structured_output(GradeHallucinations)
-
-# Prompt for hallucination grading
-system = """You are a grader assessing whether an LLM generation is grounded in / supported by a set of retrieved facts. \n
-     Give a binary score 'yes' or 'no'. 'Yes' means that the answer is grounded in / supported by the set of facts."""
-hallucination_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", system),
-        ("human", "Set of facts: \n\n {documents} \n\n LLM generation: {generation}"),
-    ]
-)
-
-hallucination_grader = hallucination_prompt | structured_llm_grader
-
 # Define AgentState
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
@@ -540,7 +516,7 @@ graph.add_node("agent", agent)
 graph.add_node("retrieve", ToolNode([retriever_tool]))
 graph.add_node("rewrite", rewrite)
 graph.add_node("generate", generate)
-#graph.add_node("hallucination_test", hallucination_test)
+graph.add_node("hallucination_test", hallucination_test)
 graph.add_node("final_response", final_response)
 
 
@@ -557,9 +533,10 @@ graph.add_conditional_edges(
 graph.add_edge("rewrite", "agent")
 graph.add_conditional_edges("agent", tools_condition, {"tools": "retrieve", END: END})
 graph.add_conditional_edges("retrieve", grade_documents_limited, {"rewrite": "rewrite", "generate": "generate", "final": "final_response"})
-#graph.add_edge("generate", "hallucination_test")
-#graph.add_edge("hallucination_test", END)
-graph.add_edge("generate", END)
+graph.add_edge("generate", "hallucination_test")
+graph.add_conditional_edges("hallucination_test", lambda state: "generate" if state["result"] == "no" else END, {"generate": "generate", END: END})
+graph.add_edge("hallucination_test", END)
+#graph.add_edge("generate", END)
 graph.add_edge("rewrite", "agent")
 
 # Compile graph
@@ -620,6 +597,10 @@ def run_virtual_assistant():
                 "messages": st.session_state.conversation,            
                 }
             
+            # Display "Assistant typing..."
+            typing_placeholder = st.empty()
+            typing_placeholder.markdown("**Assistant typing...⏳**")
+            
             #print("user input message "+ st.session_state.conversation)
 
 
@@ -637,11 +618,11 @@ def run_virtual_assistant():
                             else:
                                 final_message_content = str(msg) + "\n"
                                 st.session_state.conversation.append(("assistant", str(msg)))
-
+             # Clear "Assistant typing..." and display the response
+            typing_placeholder.empty()
             # Render the final response.
             st.markdown(final_message_content)
-            st.session_state.history+="################MESSAGE###############"
-            st.session_state.history+=final_message_content
+            st.session_state.history += "################MESSAGE###############\n" + final_message_content
 
 
 if __name__ == "__main__":
